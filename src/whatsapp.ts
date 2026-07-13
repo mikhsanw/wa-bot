@@ -1,8 +1,9 @@
-import { RedisAdapter, SQLiteAdapter, Whatsapp } from "wa-multi-session";
+import { RedisAdapter, SQLiteAdapter, Whatsapp, sendTextMessage } from "wa-multi-session";
 import { createWebhookSession } from "./webhooks/session";
 import { env } from "./env";
 import { CreateWebhookProps } from "./webhooks";
 import { createWebhookMessage } from "./webhooks/message";
+import { autoReply } from "./auto-reply/index";
 
 export const whatsappStatuses = new Map<
   string,
@@ -66,5 +67,36 @@ export const whatsapp = new Whatsapp({
     webhookSession({ session: sessionId, status: "disconnected" });
   },
 
-  onMessageReceived: webhookMessage,
+  onMessageReceived: async (message) => {
+    // Run webhook (if configured)
+    webhookMessage(message);
+    // Run auto-reply
+    try {
+      if (message.key?.fromMe) return;
+      const sessionId = message.sessionId;
+      const remoteJid = message.key?.remoteJid;
+      if (!remoteJid || !sessionId) return;
+      if (remoteJid.endsWith("@g.us")) return;
+
+      const text =
+        message.message?.conversation ||
+        message.message?.extendedTextMessage?.text ||
+        "";
+      if (!text.trim()) return;
+
+      console.log(`📩 [${sessionId}] ${remoteJid}: ${text.substring(0, 100)}`);
+      const result = await autoReply(text, sessionId);
+
+      if (result.answered && result.reply) {
+        await sendTextMessage({
+          sessionId,
+          to: remoteJid,
+          text: result.reply,
+        });
+        console.log(`✅ [${sessionId}] Replied to ${remoteJid} (${result.method})`);
+      }
+    } catch (err) {
+      console.error("❌ Auto-reply error:", err);
+    }
+  },
 });
