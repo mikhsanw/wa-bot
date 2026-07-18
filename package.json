@@ -1,6 +1,6 @@
 {
   "name": "wa-gateway",
-  "version": "4.7.1",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
