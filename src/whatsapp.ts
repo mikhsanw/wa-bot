@@ -1,8 +1,9 @@
-import { RedisAdapter, SQLiteAdapter, Whatsapp } from "wa-multi-session";
+import { Whatsapp } from "wa-multi-session";
 import { createWebhookSession } from "./webhooks/session";
 import { env } from "./env";
 import { CreateWebhookProps } from "./webhooks";
 import { createWebhookMessage } from "./webhooks/message";
+import { FileAdapter } from "./FileAdapter";
 
 export const whatsappStatuses = new Map<
   string,
@@ -23,14 +24,9 @@ const webhookSession = createWebhookSession(webhookProps);
 
 const webhookMessage = createWebhookMessage(webhookProps);
 
-const adapter = env.REDIS_URL
-  ? new RedisAdapter({
-      url: env.REDIS_URL,
-    })
-  : new SQLiteAdapter();
-
 export const whatsapp = new Whatsapp({
-  adapter: adapter,
+  adapter: new FileAdapter(),
+  debugLevel: "warn",
 
   onConnecting(sessionId) {
     whatsappStatuses.set(sessionId, {

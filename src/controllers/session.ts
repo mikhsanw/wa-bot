@@ -32,53 +32,33 @@ export const createSessionController = () => {
 
     /**
      *
-     * GET /session/:session
-     * Mendapatkan detail session berdasarkan session ID
+     * GET /session/checksession
+     * Backward-compatible endpoint for Laravel
      *
      */
-    .get("/:session", createKeyMiddleware(), async (c) => {
-      const sessionId = c.req.param("session");
-
+    .get("/checksession", createKeyMiddleware(), async (c) => {
+      const sessionId = c.req.query("session");
       if (!sessionId) {
-        throw new HTTPException(400, {
-          message: "Session ID is required",
-        });
+        return c.json({ success: false, error: "Session ID is required" });
       }
 
-      // Get session from whatsapp instance
       const session = await whatsapp.getSessionById(sessionId);
-      
-      if (!session) {
-        throw new HTTPException(404, {
-          message: `Session '${sessionId}' not found`,
-        });
-      }
-
-      // Get status from whatsappStatuses map
       const statusInfo = whatsappStatuses.get(sessionId);
 
-      // Get user information from session
-      const user = session.sock?.user;
+      if (session) {
+        return c.json({
+          success: true,
+          data: {
+            session: sessionId,
+            status: statusInfo?.status || "unknown",
+            isConnected: statusInfo?.status === "connected",
+          },
+        });
+      }
 
       return c.json({
-        success: true,
-        data: {
-          session: sessionId,
-          status: statusInfo?.status || "unknown",
-          details: {
-            name: statusInfo?.details?.name || user?.name || "",
-            phoneNumber: statusInfo?.details?.phoneNumber || user?.id?.split(":")[0] || "",
-          },
-          connection: {
-            isConnected: statusInfo?.status === "connected",
-            lastUpdate: new Date().toISOString(),
-          },
-          metadata: {
-            platform: (session.sock?.user as any)?.platform || "unknown",
-            deviceManufacturer: (session.sock?.user as any)?.deviceManufacturer || "unknown",
-            deviceModel: (session.sock?.user as any)?.deviceModel || "unknown",
-          },
-        },
+        success: false,
+        error: "Session not found",
       });
     })
 
@@ -140,9 +120,17 @@ export const createSessionController = () => {
 
         const isExist = await whatsapp.getSessionById(payload.session);
         if (isExist) {
-          throw new HTTPException(400, {
-            message: "Session already exist",
-          });
+          // If session exists but is NOT connected, delete and create fresh
+          const statusInfo = whatsappStatuses.get(payload.session);
+          if (statusInfo?.status !== "connected") {
+            await whatsapp.deleteSession(payload.session);
+            whatsappStatuses.delete(payload.session);
+            // Continue to generate new QR
+          } else {
+            throw new HTTPException(400, {
+              message: "Session already exist",
+            });
+          }
         }
 
         const qr = await new Promise<string | null>(async (r) => {
@@ -157,6 +145,11 @@ export const createSessionController = () => {
         });
 
         if (qr) {
+          // If scan=true is passed, return JSON with base64 QR image (for Laravel compatibility)
+          if (c.req.query("scan") === "true") {
+            return c.json({ qr: await toDataURL(qr) });
+          }
+          // Otherwise return HTML page with QR image
           return c.render(`
             <div id="qrcode"></div>
 
@@ -176,6 +169,59 @@ export const createSessionController = () => {
         });
       }
     )
+
+    /**
+     *
+     * GET /session/:session
+     * Mendapatkan detail session berdasarkan session ID
+     *
+     */
+    .get("/:session", createKeyMiddleware(), async (c) => {
+      const sessionId = c.req.param("session");
+
+      if (!sessionId) {
+        throw new HTTPException(400, {
+          message: "Session ID is required",
+        });
+      }
+
+      // Get session from whatsapp instance
+      const session = await whatsapp.getSessionById(sessionId);
+      
+      if (!session) {
+        throw new HTTPException(404, {
+          message: `Session '${sessionId}' not found`,
+        });
+      }
+
+      // Get status from whatsappStatuses map
+      const statusInfo = whatsappStatuses.get(sessionId);
+
+      // Get user information from session
+      const user = session.sock?.user;
+
+      return c.json({
+        success: true,
+        data: {
+          session: sessionId,
+          status: statusInfo?.status || "unknown",
+          details: {
+            name: statusInfo?.details?.name || user?.name || "",
+            phoneNumber: statusInfo?.details?.phoneNumber || user?.id?.split(":")[0] || "",
+          },
+          connection: {
+            isConnected: statusInfo?.status === "connected",
+            lastUpdate: new Date().toISOString(),
+          },
+          metadata: {
+            platform: (session.sock?.user as any)?.platform || "unknown",
+            deviceManufacturer: (session.sock?.user as any)?.deviceManufacturer || "unknown",
+            deviceModel: (session.sock?.user as any)?.deviceModel || "unknown",
+          },
+        },
+      });
+    })
+
     /**
      *
      * ALL /session/logout

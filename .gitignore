@@ -4,3 +4,4 @@ wa_credentials/
 media/*
 !media/.gitkeep
 dist/
+logs/

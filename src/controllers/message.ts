@@ -33,18 +33,16 @@ export const createMessageController = () => {
           });
         }
 
-        await whatsapp.sendTypingIndicator({
-          sessionId: payload.session,
-          to: payload.to,
-          duration: Math.min(5000, payload.text.length * 100),
-          isGroup: payload.is_group,
-        });
+        const session = await whatsapp.getSessionById(payload.session);
+        const to = payload.to + "@s.whatsapp.net";
 
-        const response = await whatsapp.sendText({
-          sessionId: payload.session,
-          to: payload.to,
+        if (!session) {
+          throw new HTTPException(500, {
+            message: "Session lost after validation",
+          });
+        }
+        const response = await session.sock.sendMessage(to, {
           text: payload.text,
-          isGroup: payload.is_group,
         });
 
         return c.json({

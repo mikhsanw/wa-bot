@@ -14,6 +14,17 @@ import { createHealthController } from "./controllers/health";
 import { createAuthController } from "./controllers/dashboard/auth";
 import { createDashboardController } from "./controllers/dashboard/dashboard";
 
+/**
+ * Error boundary — cegah crash dari unhandled Baileys errors
+ */
+process.on("uncaughtException", (err) => {
+  console.error("[UNCAUGHT EXCEPTION]", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("[UNHANDLED REJECTION]", err);
+});
+
 const app = new Hono()
   .use(
     logger((...params) => {
@@ -75,6 +86,7 @@ serve(
   {
     fetch: app.fetch,
     port: port,
+    hostname: "127.0.0.1",
   },
   () => console.log(`Server is running on port ${port}`),
 );
